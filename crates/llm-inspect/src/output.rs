@@ -128,9 +128,7 @@ impl OutputValidator {
     pub fn validate(&self, text: &str) -> OutputReport {
         let mut violations = Vec::new();
 
-        if let Some(max) = self.policy.max_bytes
-            && text.len() > max
-        {
+        if let Some(max) = self.policy.max_bytes.filter(|&max| text.len() > max) {
             violations.push(Violation {
                 kind: ViolationKind::TooLong,
                 path: String::new(),
@@ -227,8 +225,10 @@ fn select<'a>(v: &'a Value, pointer: &str, path: String, out: &mut Vec<(String, 
             }
         }
         Value::Array(items) => {
-            if let Ok(i) = head.parse::<usize>()
-                && let Some(item) = items.get(i)
+            if let Some((i, item)) = head
+                .parse::<usize>()
+                .ok()
+                .and_then(|i| Some((i, items.get(i)?)))
             {
                 select(item, rest, format!("{path}/{i}"), out);
             }

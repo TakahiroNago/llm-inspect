@@ -208,9 +208,7 @@ fn spans<'h>(
         if m.is_empty() {
             return None;
         }
-        if let Some(v) = validator
-            && !v.accepts(m.as_str())
-        {
+        if validator.is_some_and(|v| !v.accepts(m.as_str())) {
             return None;
         }
         Some((m.start(), m.end()))
