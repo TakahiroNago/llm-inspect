@@ -1,0 +1,27 @@
+[package]
+name = "llm-inspect-cli"
+description = "Command-line interface for llm-inspect: scan prompts for PII, secrets and prompt injection; validate model output"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "llm-inspect"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+llm-inspect.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

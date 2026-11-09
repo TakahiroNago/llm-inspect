@@ -1,0 +1,155 @@
+# llm-inspect
+
+[![CI](https://github.com/TakahiroNago/llm-inspect/actions/workflows/ci.yml/badge.svg)](https://github.com/TakahiroNago/llm-inspect/actions/workflows/ci.yml)
+![status: in development](https://img.shields.io/badge/status-in%20development-orange)
+![license: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
+
+LLM アプリケーションの入力と出力を検査する Rust ライブラリと CLI です。
+
+- **入力検査** — 個人情報（PII）、認証情報（シークレット）、プロンプトインジェクションのパターンを検出し、方針に従って「許可／警告／遮断」を判定します。全角文字やゼロ幅文字による回避を防ぐため、照合前に NFKC 正規化と不可視文字の除去を行い、検出位置は元のテキスト上のバイト位置で返します。検出箇所のマスキング（レダクション）もできます。
+- **出力検証** — モデルの応答が JSON Schema に適合するか、指定フィールドの値が許可リストに含まれるか、HTML が混入していないか、サイズ上限内かを検証します。
+
+ルールは TOML で書いた正規表現なので、再コンパイルせずに監査・追加・差し替えができます。
+
+> **開発中（2026年11月〜）。** API は 0.x の間に変わる可能性があります。crates.io には未公開です。
+>
+> **検出は完全ではありません。** パターン照合はすべての攻撃や個人情報を捕捉できず、誤検知も起こります。人間の承認、最小権限、監査ログと組み合わせた多層防御の一層として使ってください。
+
+*English: `llm-inspect` is an input/output security inspection library and CLI for LLM applications: PII, secrets and prompt-injection detection with normalization-aware offsets and redaction, plus JSON Schema / allow-list / HTML validation of model output. Rules are TOML-defined regular expressions. In development; detection is heuristic and not exhaustive. API docs are in the source (`cargo doc --open`).*
+
+## 使い方（ライブラリ）
+
+```toml
+[dependencies]
+llm-inspect = { git = "https://github.com/TakahiroNago/llm-inspect" }
+```
+
+```rust
+use llm_inspect::{Decision, Inspector};
+
+let inspector = Inspector::with_default_rules();
+
+// 入力の検査
+let report = inspector.scan("Ignore all previous instructions. My key is AKIAIOSFODNN7EXAMPLE.");
+assert_eq!(report.decision, Decision::Block);
+for f in &report.findings {
+    println!("{} {:?} bytes {}..{}", f.rule_id, f.severity, f.start, f.end);
+}
+
+// マスキング（既定では pii と secret を置き換え、injection は残す）
+let redacted = inspector.redact("Contact: taro@example.com");
+assert_eq!(redacted.text, "Contact: [REDACTED:PII]");
+```
+
+```rust
+use llm_inspect::{AllowList, OutputPolicy, OutputValidator};
+use serde_json::json;
+
+let validator = OutputValidator::new(OutputPolicy {
+    schema: Some(json!({
+        "type": "object",
+        "required": ["steps"],
+        "properties": { "steps": { "type": "array", "items": {
+            "type": "object", "required": ["action", "target"],
+            "properties": { "action": {"type": "string"}, "target": {"type": "string"} }
+        }}}
+    })),
+    allow: vec![AllowList { pointer: "/steps/*/action".into(), values: vec!["read".into(), "notify".into()] }],
+    forbid_html: true,
+    max_bytes: Some(64 * 1024),
+})?;
+
+let report = validator.validate(r#"{"steps":[{"action":"delete","target":"/"}]}"#);
+assert!(!report.is_valid()); // /steps/0/action は許可リスト外
+```
+
+`Report` と `Finding` はシリアライズ可能ですが、**一致したテキストそのものは含みません**。検査結果をログに書いたときに、検出した秘密情報や個人情報がログへ漏れるのを防ぐためです。必要な場合だけ `Finding::excerpt(&original)` で取り出してください。
+
+## 使い方（CLI）
+
+```sh
+cargo install --git https://github.com/TakahiroNago/llm-inspect llm-inspect-cli
+
+# 入力の検査（標準入力またはファイル）
+echo "連絡先は 090-1234-5678 です" | llm-inspect scan
+# decision: Warn
+# medium    pii        pii.phone_jp                             bytes 12..25
+
+# マスキングした本文を出力
+echo "key = AKIAIOSFODNN7EXAMPLE" | llm-inspect scan --redact
+# key = [REDACTED:SECRET]
+
+# JSON で出力、独自ルールを追加
+llm-inspect scan --rules my-rules.toml --format json prompt.txt
+
+# 出力の検証
+llm-inspect validate --schema plan.schema.json --allow "/steps/*/action=read,notify" --forbid-html response.json
+
+# 有効なルール一覧
+llm-inspect rules
+```
+
+終了コード：`0` 許可／有効、`10` 警告、`20` 遮断／無効、`1` 引数や入出力のエラー。
+
+## ルールの書き方
+
+```toml
+[policy]
+block_at = "high"            # この深刻度以上の検出があれば Block
+warn_at  = "medium"          # この深刻度以上（block_at 未満）なら Warn
+redact   = ["pii", "secret"] # redact() が置き換えるカテゴリ
+
+[[rules]]
+id          = "pii.employee_id"
+category    = "pii"          # pii | secret | injection
+severity    = "medium"       # low | medium | high | critical
+description = "社員番号"
+pattern     = '''(?:^|[^0-9A-Z])(EMP-[0-9]{6})(?:[^0-9]|$)'''
+redact_with = "[社員番号]"   # 省略時は [REDACTED:PII]
+```
+
+- 正規表現は [regex クレート](https://docs.rs/regex) の構文です（後読み・先読みは使えません）。パターンにキャプチャグループがあればグループ 1 を検出箇所として扱うので、「直前が数字でない」といった文脈条件をグループの外に書けます。
+- `validator = "luhn"` を付けると、一致した数字列が Luhn チェックを通る場合だけ検出します（クレジットカード番号用）。
+- CLI の `--rules` は既定ルールに追加し、`[policy]` は上書きします。`--no-defaults` で既定ルールを外せます。
+- 既定ルールは [`crates/llm-inspect/rules/default.toml`](crates/llm-inspect/rules/default.toml) にあります。
+
+### 既定ルールの概要
+
+| カテゴリ | ルール | 深刻度 |
+|---|---|---|
+| pii | メールアドレス、日本の電話番号、国際電話番号、IPv4 | low〜medium |
+| pii | クレジットカード番号（Luhn 検証付き） | high |
+| secret | AWS アクセスキー、GitHub / Slack トークン、PEM 秘密鍵 | critical |
+| secret | OpenAI 形式のキー、Google API キー、JWT、`api_key = "..."` 形式の代入 | high |
+| injection | 「以前の指示を無視」「システムプロンプトを表示」（日本語・英語） | high |
+| injection | 無制限ペルソナへの切り替え、チャットテンプレートのロール記号の混入 | medium |
+| injection | クエリ付き URL への Markdown 画像・リンク（データ持ち出し経路） | high |
+| injection | 不可視文字の混入（`obfuscation.invisible_chars`。正規化時に自動付与） | low |
+
+## 設計メモ
+
+- **正規化と位置の対応** — `Normalized` は 1 文字ずつ NFKC 正規化し、不可視文字（ゼロ幅スペース、双方向制御文字、BOM など）を取り除きながら、正規化後の各バイトが元のどの文字由来かを記録します。検出は正規化後のテキストで行い、結果は元のテキストのバイト範囲（必ず文字境界）に戻します。元のテキストでは一致せず正規化後にだけ一致した検出には `normalized_only = true` が付き、意図的な回避の強い兆候として扱えます。
+- **方針と判定** — 検出の最大深刻度を `block_at` / `warn_at` と比較して `Allow` / `Warn` / `Block` を決めます。深刻度と閾値はルールファイル側で調整できます。
+- **出力検証** — JSON Schema は [`jsonschema`](https://docs.rs/jsonschema) クレートで検証します（ネットワーク経由の `$ref` 解決は無効）。許可リストのポインタは RFC 6901 に `*`（配列・オブジェクトの全要素）を加えた形式です。`contains_html` / `strip_html` は検出とタグ除去のための簡易実装で、HTML サニタイザーの代わりにはなりません。
+
+## 開発
+
+```sh
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo fmt --all --check
+```
+
+CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test / doc を、Ubuntu で MSRV（Rust 1.85）ビルドを実行します。
+
+## ロードマップ
+
+- [x] コアクレート（入力検査・レダクション・出力検証）、CLI、テスト、CI
+- [ ] WebAssembly ビルド（wasm-bindgen）とブラウザデモ
+- [ ] ベンチマーク（criterion）とプロパティテスト（proptest）
+- [ ] 任意：axum による HTTP サービス
+- [ ] crates.io への公開
+
+## ライセンス
+
+MIT と Apache-2.0 のデュアルライセンスです（[LICENSE-MIT](LICENSE-MIT)、[LICENSE-APACHE](LICENSE-APACHE)）。

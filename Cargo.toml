@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["crates/llm-inspect", "crates/llm-inspect-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/TakahiroNago/llm-inspect"
+authors = ["Takahiro Nago <takahiro.nago.art@gmail.com>"]
+
+[workspace.dependencies]
+llm-inspect = { path = "crates/llm-inspect", version = "0.1.0" }
+regex = "1.13"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "1.2"
+unicode-normalization = "0.1"
+jsonschema = { version = "0.61", default-features = false }
+thiserror = "2.0"
+clap = { version = "4.6", features = ["derive"] }
+anyhow = "1.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

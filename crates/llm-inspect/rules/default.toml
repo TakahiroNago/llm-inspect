@@ -1,0 +1,173 @@
+# Default rule set for llm-inspect.
+#
+# These patterns are a starting point. Pattern matching cannot detect every
+# attack or every piece of personal data; false positives and negatives are
+# both possible. Review and tune them for your application, and keep human
+# approval, least privilege and audit logging in place.
+#
+# Text is NFKC-normalized and stripped of invisible characters before matching,
+# so full-width letters and zero-width characters do not bypass these rules.
+# If a pattern has a capture group, group 1 is the finding; this is how rules
+# express "not adjacent to a digit" without look-around.
+
+[policy]
+block_at = "high"
+warn_at = "medium"
+redact = ["pii", "secret"]
+
+# ---------------------------------------------------------------- PII
+
+[[rules]]
+id = "pii.email"
+category = "pii"
+severity = "medium"
+description = "Email address"
+pattern = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'''
+
+[[rules]]
+id = "pii.phone_jp"
+category = "pii"
+severity = "medium"
+description = "Japanese phone number with hyphens (fixed-line, mobile, toll-free)"
+pattern = '''(?:^|[^0-9])(0[0-9]{1,3}-[0-9]{1,4}-[0-9]{3,4})(?:[^0-9]|$)'''
+
+[[rules]]
+id = "pii.phone_intl"
+category = "pii"
+severity = "medium"
+description = "International phone number in +CC form"
+pattern = '''(?:^|[^0-9])(\+[1-9][0-9]{0,2}[ -]?(?:\(?[0-9]{1,4}\)?[ -]?){2,4}[0-9]{2,4})(?:[^0-9]|$)'''
+
+[[rules]]
+id = "pii.credit_card"
+category = "pii"
+severity = "high"
+description = "Payment card number (13-19 digits, Luhn-validated)"
+pattern = '''(?:^|[^0-9])([0-9](?:[ -]?[0-9]){12,18})(?:[^0-9]|$)'''
+validator = "luhn"
+
+[[rules]]
+id = "pii.ipv4"
+category = "pii"
+severity = "low"
+description = "IPv4 address (often an identifier; logged, not blocked)"
+pattern = '''(?:^|[^0-9.])((?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3})(?:[^0-9.]|$)'''
+
+# ---------------------------------------------------------------- Secrets
+
+[[rules]]
+id = "secret.aws_access_key"
+category = "secret"
+severity = "critical"
+description = "AWS access key id"
+pattern = '''\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'''
+
+[[rules]]
+id = "secret.github_token"
+category = "secret"
+severity = "critical"
+description = "GitHub token (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_)"
+pattern = '''\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{80,})\b'''
+
+[[rules]]
+id = "secret.slack_token"
+category = "secret"
+severity = "critical"
+description = "Slack token"
+pattern = '''\bxox[abprs]-[A-Za-z0-9-]{10,}\b'''
+
+[[rules]]
+id = "secret.openai_key"
+category = "secret"
+severity = "high"
+description = "OpenAI-style API key (sk-...)"
+pattern = '''\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b'''
+
+[[rules]]
+id = "secret.google_api_key"
+category = "secret"
+severity = "high"
+description = "Google API key"
+pattern = '''\bAIza[0-9A-Za-z_-]{35}\b'''
+
+[[rules]]
+id = "secret.private_key"
+category = "secret"
+severity = "critical"
+description = "PEM private key header"
+pattern = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----'''
+
+[[rules]]
+id = "secret.jwt"
+category = "secret"
+severity = "high"
+description = "JSON Web Token"
+pattern = '''\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b'''
+
+[[rules]]
+id = "secret.generic_assignment"
+category = "secret"
+severity = "high"
+description = "Key/password/token assigned a literal value (api_key = \"...\")"
+pattern = '''(?i)\b(?:api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|password|passwd|pwd)\b\s*[:=]\s*["']?([A-Za-z0-9_\-/+=.]{12,})["']?'''
+
+# ---------------------------------------------------------------- Prompt injection
+# Heuristics. Attackers rephrase; these catch the common, direct forms and
+# flag obvious role or system-prompt manipulation. Pair with model-side
+# defenses and human approval.
+
+[[rules]]
+id = "injection.ignore_instructions"
+category = "injection"
+severity = "high"
+description = "Request to ignore or override previous instructions (English)"
+pattern = '''(?i)\b(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}\b(?:previous|prior|above|earlier|all|any|your|the)\b[^.\n]{0,40}\b(?:instructions?|prompts?|rules?|guidelines?|constraints?|policy|policies)\b'''
+
+[[rules]]
+id = "injection.ignore_instructions_ja"
+category = "injection"
+severity = "high"
+description = "Request to ignore or override previous instructions (Japanese)"
+pattern = '''(?:これまでの|以前の|上記の|前の|今までの|すべての|全ての|あらゆる)[^。\n]{0,20}(?:指示|命令|ルール|制約|プロンプト|設定)[^。\n]{0,20}(?:無視|忘れ|破棄|解除|取り消|上書き)'''
+
+[[rules]]
+id = "injection.reveal_system_prompt"
+category = "injection"
+severity = "high"
+description = "Request to reveal the system prompt or hidden instructions (English)"
+pattern = '''(?i)\b(?:reveal|show|print|display|repeat|output|leak|dump|tell me)\b[^.\n]{0,40}\b(?:system prompt|initial prompt|hidden (?:instructions?|prompt)|your (?:instructions|rules|configuration)|developer message)\b'''
+
+[[rules]]
+id = "injection.reveal_system_prompt_ja"
+category = "injection"
+severity = "high"
+description = "Request to reveal the system prompt or hidden instructions (Japanese)"
+pattern = '''(?:システムプロンプト|初期プロンプト|隠された指示|内部の指示|元の指示|開発者メッセージ)[^。\n]{0,20}(?:教えて|表示|出力|開示|見せて|全文|そのまま)'''
+
+[[rules]]
+id = "injection.role_override"
+category = "injection"
+severity = "medium"
+description = "Attempt to switch the model into an unrestricted persona or mode (English)"
+pattern = '''(?i)\b(?:you are now|from now on you are|pretend (?:to be|you are)|act as)\b[^.\n]{0,60}\b(?:unrestricted|uncensored|unfiltered|jailbroken|no (?:rules|restrictions|limits)|without (?:any )?(?:rules|restrictions|limits))\b|\b(?:DAN|developer|god|jailbreak) mode\b'''
+
+[[rules]]
+id = "injection.role_override_ja"
+category = "injection"
+severity = "medium"
+description = "Attempt to switch the model into an unrestricted persona or mode (Japanese)"
+pattern = '''(?:今から|これから|以降)[^。\n]{0,10}あなたは[^。\n]{0,30}(?:制限|制約|ルール|倫理|検閲)(?:の|が|を)?(?:ない|無い|解除|無視|受けない)'''
+
+[[rules]]
+id = "injection.fake_chat_markup"
+category = "injection"
+severity = "medium"
+description = "Chat-template or role markers injected into user content"
+pattern = '''(?im)^\s*(?:system|assistant|developer)\s*:|<\|?(?:im_start|im_end|system|endoftext|eot_id|start_header_id)\|?>|<<SYS>>|\[/?INST\]'''
+
+[[rules]]
+id = "injection.exfil_markdown_image"
+category = "injection"
+severity = "high"
+description = "Markdown image or link to a URL with a query string (data exfiltration channel)"
+pattern = '''!?\[[^\]\n]*\]\(https?://[^)\s]*\?[^)\s]*\)'''
