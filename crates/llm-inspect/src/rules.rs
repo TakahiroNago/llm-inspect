@@ -75,7 +75,8 @@ pub enum Validator {
 }
 
 impl Validator {
-    pub(crate) fn accepts(self, matched: &str) -> bool {
+    /// Returns `true` if `matched` passes this validator.
+    pub fn accepts(self, matched: &str) -> bool {
         match self {
             Validator::Luhn => luhn(matched),
         }

@@ -141,12 +141,14 @@ redact_with = "[社員番号]"   # 省略時は [REDACTED:PII]
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all --check
+cargo test -p llm-inspect --test properties         # proptest（正規化の位置対応、Luhn、判定の整合性など）
 cargo bench -p llm-inspect --bench inspect          # Criterion
+cargo +nightly fuzz run scan -- -max_total_time=60  # cargo-fuzz（scan / rules / validate の3ターゲット。要 nightly）
 wasm-pack build crates/llm-inspect-wasm --target web --release --out-dir ../../demo/pkg --no-pack
 python -m http.server -d demo 8765                  # http://localhost:8765/ でデモを確認
 ```
 
-CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test / doc を、Ubuntu で wasm32 ビルドと MSRV（Rust 1.85）ビルドを実行します。`main` への push で `demo/` を GitHub Pages に配信します。
+CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test（proptest を含む）/ doc を、Ubuntu で wasm32 ビルドと MSRV（Rust 1.85）ビルドを実行します。`main` への push で `demo/` を GitHub Pages に配信します。ファジングは週 1 回と手動実行、および `fuzz/` やコアクレートを変更した PR で各ターゲット 60 秒ずつ回します。
 
 ## 構成
 
@@ -155,6 +157,7 @@ crates/llm-inspect/        コアクレート（rules/default.toml を同梱、b
 crates/llm-inspect-cli/    CLI（バイナリ名 llm-inspect）
 crates/llm-inspect-wasm/   wasm-bindgen バインディング（JSON 文字列で入出力）
 demo/                      ブラウザデモ（静的 HTML / JS。pkg/ はビルド生成物）
+fuzz/                      cargo-fuzz のターゲットとシードコーパス（ワークスペース外）
 ```
 
 ## ロードマップ
@@ -162,7 +165,7 @@ demo/                      ブラウザデモ（静的 HTML / JS。pkg/ はビ�
 - [x] コアクレート（入力検査・レダクション・出力検証）、CLI、テスト、CI
 - [x] WebAssembly ビルド（wasm-bindgen）とブラウザデモ（GitHub Pages）
 - [x] ベンチマーク（criterion）→ [BENCHMARKS.md](BENCHMARKS.md)
-- [ ] プロパティテスト（proptest）とファジング
+- [x] プロパティテスト（proptest）とファジング（cargo-fuzz、週次 CI）
 - [ ] 任意：axum による HTTP サービス
 - [ ] crates.io への公開
 

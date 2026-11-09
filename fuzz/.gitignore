@@ -1,0 +1,8 @@
+/target
+/artifacts
+/coverage
+Cargo.lock
+# Keep only the hand-written seeds; libFuzzer writes the evolving corpus next to them.
+/corpus/**
+!/corpus/*/
+!/corpus/*/seed_*

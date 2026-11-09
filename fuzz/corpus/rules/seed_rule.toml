@@ -1,0 +1,19 @@
+[policy]
+block_at = "high"
+warn_at = "medium"
+redact = ["pii", "secret"]
+
+[[rules]]
+id = "pii.employee_id"
+category = "pii"
+severity = "medium"
+description = "Employee id"
+pattern = '''(?:^|[^0-9A-Z])(EMP-[0-9]{6})(?:[^0-9]|$)'''
+redact_with = "[EMP]"
+
+[[rules]]
+id = "pii.card"
+category = "pii"
+severity = "high"
+pattern = '''(?:^|[^0-9])([0-9](?:[ -]?[0-9]){12,18})(?:[^0-9]|$)'''
+validator = "luhn"

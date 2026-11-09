@@ -1,0 +1,1 @@
+{"steps":[{"action":"read","target":"report.pdf"},{"action":"delete","target":"<img src=x onerror=alert(1)>"}],"extra":1}
