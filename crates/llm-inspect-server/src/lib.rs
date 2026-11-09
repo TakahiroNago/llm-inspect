@@ -4,9 +4,9 @@
 //! |--------|-------------|---------------------------------------------------|------------------------------|
 //! | GET    | `/healthz`  | —                                                 | `{ "status": "ok", "version": "…" }` |
 //! | GET    | `/rules`    | —                                                 | `{ "policy": …, "rules": […] }` |
-//! | POST   | `/scan`     | `{ "text": "…" }`                                 | [`Report`](llm_inspect::Report) |
-//! | POST   | `/redact`   | `{ "text": "…" }`                                 | [`Redacted`](llm_inspect::Redacted) |
-//! | POST   | `/validate` | `{ "text": "…", "policy": {…} }` or `{ "text": "…", "policy_name": "…" }` | [`OutputReport`](llm_inspect::OutputReport) |
+//! | POST   | `/scan`     | `{ "text": "…" }`                                 | [`Report`] |
+//! | POST   | `/redact`   | `{ "text": "…" }`                                 | [`Redacted`] |
+//! | POST   | `/validate` | `{ "text": "…", "policy": {…} }` or `{ "text": "…", "policy_name": "…" }` | [`OutputReport`] |
 //!
 //! Errors are JSON objects `{ "error": "…" }` with `400` (bad request), `401`
 //! (missing or wrong bearer token), `413` (body too large) or `415` (not JSON).
