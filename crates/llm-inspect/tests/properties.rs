@@ -123,24 +123,10 @@ proptest! {
         let scanned = INSPECTOR.scan(&s);
         let redacted = INSPECTOR.redact(&s);
         prop_assert_eq!(&redacted.report, &scanned);
-        let redactable = scanned
-            .findings
-            .iter()
-            .filter(|f| INSPECTOR.policy().redact.contains(&f.category))
-            .filter(|f| f.rule_id != "obfuscation.invisible_chars")
-            .count();
-        if redactable == 0 {
-            prop_assert_eq!(redacted.text, s);
-        } else {
-            prop_assert!(redacted.text.contains("[REDACTED:"));
-            // Secrets never survive redaction verbatim.
-            for f in scanned.findings.iter().filter(|f| f.category == Category::Secret) {
-                let secret = f.excerpt(&s);
-                if secret.len() >= 8 {
-                    prop_assert!(!redacted.text.contains(secret), "secret survived redaction");
-                }
-            }
-        }
+        // Independent re-implementation of the redaction contract: replace every
+        // redactable span (overlaps merged, first finding's marker wins) and
+        // compare with what the library produced.
+        prop_assert_eq!(redacted.text, expected_redaction(&s, &scanned));
     }
 
     #[test]
@@ -231,6 +217,52 @@ proptest! {
             .collect();
         prop_assert_eq!(reported, disallowed);
     }
+}
+
+/// Reference implementation of redaction used to cross-check `Inspector::redact`.
+fn expected_redaction(text: &str, report: &Report) -> String {
+    let policy = INSPECTOR.policy();
+    let mut out = String::new();
+    let mut cursor = 0usize;
+    let mut pending: Option<(usize, usize, &'static str)> = None;
+    for f in report.findings.iter().filter(|f| {
+        f.rule_id != "obfuscation.invisible_chars" && policy.redact.contains(&f.category)
+    }) {
+        let marker = match f.category {
+            Category::Pii => "[REDACTED:PII]",
+            Category::Secret => "[REDACTED:SECRET]",
+            Category::Injection => "[REDACTED:INJECTION]",
+            _ => "[REDACTED]",
+        };
+        match pending {
+            Some((_, ref mut end, _)) if f.start < *end => *end = (*end).max(f.end),
+            _ => {
+                if let Some((s0, e0, m)) = pending.take() {
+                    out.push_str(&text[cursor..s0]);
+                    out.push_str(m);
+                    cursor = e0;
+                }
+                pending = Some((f.start, f.end, marker));
+            }
+        }
+    }
+    if let Some((s0, e0, m)) = pending {
+        out.push_str(&text[cursor..s0]);
+        out.push_str(m);
+        cursor = e0;
+    }
+    out.push_str(&text[cursor..]);
+    out
+}
+
+/// Regression found by proptest on CI: a token that merely contains a key-like
+/// prefix is not a key, so it must stay in the redacted text untouched.
+#[test]
+fn key_like_prefix_inside_longer_token_is_not_redacted() {
+    let text = "AKIAIOSFODNN7EXAMPLE、AKIAIOSFODNN7EXAMPLE0000";
+    let r = INSPECTOR.redact(text);
+    assert_eq!(r.text, "[REDACTED:SECRET]、AKIAIOSFODNN7EXAMPLE0000");
+    assert_eq!(r.report.findings.len(), 1);
 }
 
 /// Check digit that makes `payload ++ [digit]` pass the Luhn test.
