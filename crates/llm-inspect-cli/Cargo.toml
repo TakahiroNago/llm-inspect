@@ -1,6 +1,9 @@
 [package]
 name = "llm-inspect-cli"
 description = "Command-line interface for llm-inspect: scan prompts for PII, secrets and prompt injection; validate model output"
+keywords = ["llm", "security", "prompt-injection", "pii", "cli"]
+categories = ["command-line-utilities", "text-processing"]
+readme = "../../README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
