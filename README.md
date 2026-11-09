@@ -1,7 +1,8 @@
 # llm-inspect
 
 [![CI](https://github.com/TakahiroNago/llm-inspect/actions/workflows/ci.yml/badge.svg)](https://github.com/TakahiroNago/llm-inspect/actions/workflows/ci.yml)
-![status: in development](https://img.shields.io/badge/status-in%20development-orange)
+[![crates.io](https://img.shields.io/crates/v/llm-inspect.svg)](https://crates.io/crates/llm-inspect)
+[![docs.rs](https://img.shields.io/docsrs/llm-inspect)](https://docs.rs/llm-inspect)
 ![license: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 
 LLM アプリケーションの入力と出力を検査する Rust ライブラリと CLI です。
@@ -13,17 +14,17 @@ LLM アプリケーションの入力と出力を検査する Rust ライブラ�
 
 **ブラウザデモ：** https://takahironago.github.io/llm-inspect/ （WebAssembly。入力したテキストはブラウザの外へ送信されません）
 
-> **開発中（2026年11月〜）。** API は 0.x の間に変わる可能性があります。crates.io には未公開です。
+> **v0.1.0 を crates.io に公開しています（2026年11月）。** API は 0.x の間に変わる可能性があります。
 >
 > **検出は完全ではありません。** パターン照合はすべての攻撃や個人情報を捕捉できず、誤検知も起こります。人間の承認、最小権限、監査ログと組み合わせた多層防御の一層として使ってください。
 
-*English: `llm-inspect` is an input/output security inspection library for LLM applications, with a CLI, a WebAssembly demo and an axum HTTP service: PII, secrets and prompt-injection detection with normalization-aware offsets and redaction, plus JSON Schema / allow-list / HTML validation of model output. Rules are TOML-defined regular expressions. In development; detection is heuristic and not exhaustive. API docs are in the source (`cargo doc --open`).*
+*English: `llm-inspect` is an input/output security inspection library for LLM applications, with a CLI, a WebAssembly demo and an axum HTTP service: PII, secrets and prompt-injection detection with normalization-aware offsets and redaction, plus JSON Schema / allow-list / HTML validation of model output. Rules are TOML-defined regular expressions. Published on crates.io as 0.1.x (API may change before 1.0); detection is heuristic and not exhaustive. API docs: https://docs.rs/llm-inspect.*
 
 ## 使い方（ライブラリ）
 
 ```toml
 [dependencies]
-llm-inspect = { git = "https://github.com/TakahiroNago/llm-inspect" }
+llm-inspect = "0.1"
 ```
 
 ```rust
@@ -70,7 +71,7 @@ assert!(!report.is_valid()); // /steps/0/action は許可リスト外
 ## 使い方（CLI）
 
 ```sh
-cargo install --git https://github.com/TakahiroNago/llm-inspect llm-inspect-cli
+cargo install --git https://github.com/TakahiroNago/llm-inspect llm-inspect-cli   # CLI は crates.io 未公開のため git から
 
 # 入力の検査（標準入力またはファイル）
 echo "連絡先は 090-1234-5678 です" | llm-inspect scan
@@ -199,7 +200,7 @@ fuzz/                      cargo-fuzz のターゲットとシードコーパス
 - [x] ベンチマーク（criterion）→ [BENCHMARKS.md](BENCHMARKS.md)
 - [x] プロパティテスト（proptest）とファジング（cargo-fuzz、週次 CI）
 - [x] axum による HTTP サービス（Docker イメージ、ベアラートークン、本文サイズ・タイムアウト制限）
-- [ ] crates.io への公開
+- [x] crates.io への公開（v0.1.0、2026-11-10。コアクレートのみ）
 
 ## ライセンス
 
