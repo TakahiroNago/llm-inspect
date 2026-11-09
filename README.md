@@ -17,7 +17,7 @@ LLM アプリケーションの入力と出力を検査する Rust ライブラ�
 >
 > **検出は完全ではありません。** パターン照合はすべての攻撃や個人情報を捕捉できず、誤検知も起こります。人間の承認、最小権限、監査ログと組み合わせた多層防御の一層として使ってください。
 
-*English: `llm-inspect` is an input/output security inspection library and CLI for LLM applications: PII, secrets and prompt-injection detection with normalization-aware offsets and redaction, plus JSON Schema / allow-list / HTML validation of model output. Rules are TOML-defined regular expressions. In development; detection is heuristic and not exhaustive. API docs are in the source (`cargo doc --open`).*
+*English: `llm-inspect` is an input/output security inspection library for LLM applications, with a CLI, a WebAssembly demo and an axum HTTP service: PII, secrets and prompt-injection detection with normalization-aware offsets and redaction, plus JSON Schema / allow-list / HTML validation of model output. Rules are TOML-defined regular expressions. In development; detection is heuristic and not exhaustive. API docs are in the source (`cargo doc --open`).*
 
 ## 使い方（ライブラリ）
 
@@ -93,6 +93,37 @@ llm-inspect rules
 
 終了コード：`0` 許可／有効、`10` 警告、`20` 遮断／無効、`1` 引数や入出力のエラー。
 
+## 使い方（HTTP サービス）
+
+`crates/llm-inspect-server` は同じコアを axum の REST API として公開します。他言語のアプリケーションからは、この API を呼ぶのが最も簡単です。
+
+```sh
+cargo run -p llm-inspect-server -- --bind 127.0.0.1:8080 \
+  --policy plan=crates/llm-inspect-server/policies/plan.example.json
+# または Docker
+docker build -f crates/llm-inspect-server/Dockerfile -t llm-inspect-server .
+docker run --rm -p 8080:8080 -e LLM_INSPECT_TOKEN=change-me llm-inspect-server
+
+curl -s -H 'Content-Type: application/json' -d '{"text":"key AKIAIOSFODNN7EXAMPLE"}' http://127.0.0.1:8080/scan
+curl -s -H 'Content-Type: application/json' -d '{"text":"mail taro@example.com"}' http://127.0.0.1:8080/redact
+curl -s -H 'Content-Type: application/json' \
+  -d '{"text":"{\"steps\":[{\"action\":\"delete\",\"target\":\"/\"}]}","policy_name":"plan"}' http://127.0.0.1:8080/validate
+```
+
+| メソッド | パス | 本文 | 応答 |
+|---|---|---|---|
+| GET | `/healthz` | — | `{"status":"ok","version":"…"}`（認証不要） |
+| GET | `/rules` | — | 有効なルール・方針・読み込み済み出力ポリシー名 |
+| POST | `/scan` | `{"text":"…"}` | `Report` |
+| POST | `/redact` | `{"text":"…"}` | `Redacted`（`text` と `report`） |
+| POST | `/validate` | `{"text":"…","policy":{…}}` または `{"text":"…","policy_name":"…"}` | `OutputReport` |
+
+- 既定では loopback（127.0.0.1:8080）にのみ待ち受けます。外部へ公開する場合は TLS を終端するリバースプロキシの背後に置き、`LLM_INSPECT_TOKEN`（`Authorization: Bearer …`、定数時間比較）を設定してください。loopback 以外でトークンなしの場合は起動時に警告を出します。
+- 本文サイズ上限（既定 1 MiB → 413）、リクエストタイムアウト（既定 10 秒 → 408）、JSON 以外は 415、不正な JSON やポリシーは 400 で、いずれも `{"error":"…"}` を返します。
+- アクセスログはメソッド・パス・ステータス・所要時間のみで、**リクエスト本文は記録しません**（本文こそが秘密情報や個人情報だからです）。
+- 出力ポリシーは起動時に `--policy NAME=PATH` で読み込んで `policy_name` で参照するか、リクエストに `policy` としてインラインで渡せます（インラインは毎回スキーマをコンパイルします）。
+- ルールは CLI と同じく `--rules FILE`（追加）と `--no-defaults` で差し替えられます。
+
 ## ルールの書き方
 
 ```toml
@@ -148,7 +179,7 @@ wasm-pack build crates/llm-inspect-wasm --target web --release --out-dir ../../d
 python -m http.server -d demo 8765                  # http://localhost:8765/ でデモを確認
 ```
 
-CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test（proptest を含む）/ doc を、Ubuntu で wasm32 ビルドと MSRV（Rust 1.85）ビルドを実行します。`main` への push で `demo/` を GitHub Pages に配信します。ファジングは週 1 回と手動実行、および `fuzz/` やコアクレートを変更した PR で各ターゲット 60 秒ずつ回します。
+CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test（proptest を含む）/ doc を、Ubuntu で wasm32 ビルド、MSRV（Rust 1.85）ビルド、サーバーの Docker イメージのビルドと起動確認を実行します。`main` への push で `demo/` を GitHub Pages に配信します。ファジングは週 1 回と手動実行、および `fuzz/` やコアクレートを変更した PR で各ターゲット 60 秒ずつ回します。
 
 ## 構成
 
@@ -156,6 +187,7 @@ CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test（proptest 
 crates/llm-inspect/        コアクレート（rules/default.toml を同梱、benches/ に Criterion）
 crates/llm-inspect-cli/    CLI（バイナリ名 llm-inspect）
 crates/llm-inspect-wasm/   wasm-bindgen バインディング（JSON 文字列で入出力）
+crates/llm-inspect-server/ axum の HTTP API（Dockerfile、tower の oneshot による API テスト）
 demo/                      ブラウザデモ（静的 HTML / JS。pkg/ はビルド生成物）
 fuzz/                      cargo-fuzz のターゲットとシードコーパス（ワークスペース外）
 ```
@@ -166,7 +198,7 @@ fuzz/                      cargo-fuzz のターゲットとシードコーパス
 - [x] WebAssembly ビルド（wasm-bindgen）とブラウザデモ（GitHub Pages）
 - [x] ベンチマーク（criterion）→ [BENCHMARKS.md](BENCHMARKS.md)
 - [x] プロパティテスト（proptest）とファジング（cargo-fuzz、週次 CI）
-- [ ] 任意：axum による HTTP サービス
+- [x] axum による HTTP サービス（Docker イメージ、ベアラートークン、本文サイズ・タイムアウト制限）
 - [ ] crates.io への公開
 
 ## ライセンス

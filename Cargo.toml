@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/llm-inspect", "crates/llm-inspect-cli", "crates/llm-inspect-wasm"]
+members = [
+  "crates/llm-inspect",
+  "crates/llm-inspect-cli",
+  "crates/llm-inspect-wasm",
+  "crates/llm-inspect-server",
+]
 exclude = ["fuzz"]
 
 [workspace.package]
@@ -24,6 +29,14 @@ clap = { version = "4.6", features = ["derive"] }
 anyhow = "1.0"
 criterion = { version = "0.8", default-features = false }
 proptest = "1.12"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "tower-log"] }
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["trace", "timeout"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+http-body-util = "0.1"
+subtle = "2.6"
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 
