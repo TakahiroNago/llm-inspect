@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llm-inspect demo</title>
+  <meta name="description" content="llm-inspect のブラウザデモ。入力テキストの PII・秘密情報・プロンプトインジェクション検出と、モデル出力の JSON Schema / 許可リスト / HTML 検証を、WebAssembly でブラウザ内だけで実行します。" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1>llm-inspect <span class="ver" id="version"></span></h1>
+      <p class="lead">LLM アプリケーションの入力と出力を検査する Rust ライブラリのデモです。処理はすべてブラウザ内の WebAssembly で行われ、入力したテキストはどこにも送信されません。
+        <a href="https://github.com/TakahiroNago/llm-inspect" rel="noopener">GitHub</a></p>
+      <p class="note">検出は完全ではありません。パターン照合では捕捉できない攻撃や個人情報があり、誤検知も起こります。多層防御の一層として使う前提のライブラリです。</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <nav class="tabs" role="tablist" aria-label="デモの切り替え">
+      <button role="tab" aria-selected="true" aria-controls="panel-input" id="tab-input">入力検査</button>
+      <button role="tab" aria-selected="false" aria-controls="panel-output" id="tab-output">出力検証</button>
+    </nav>
+
+    <section id="panel-input" role="tabpanel" aria-labelledby="tab-input">
+      <div class="grid">
+        <div class="col">
+          <label for="input-text">検査するテキスト</label>
+          <div class="samples" aria-label="サンプル">
+            <button type="button" data-sample="clean">問題なし</button>
+            <button type="button" data-sample="pii">個人情報</button>
+            <button type="button" data-sample="secret">シークレット</button>
+            <button type="button" data-sample="injection">インジェクション</button>
+            <button type="button" data-sample="evasion">全角・ゼロ幅で回避</button>
+          </div>
+          <textarea id="input-text" rows="9" spellcheck="false"></textarea>
+          <details>
+            <summary>ルール（TOML）を編集する</summary>
+            <p class="hint">空にすると既定ルールを使います。保存はされません。</p>
+            <textarea id="rules-toml" rows="14" spellcheck="false"></textarea>
+            <button type="button" id="rules-reset">既定に戻す</button>
+          </details>
+        </div>
+        <div class="col">
+          <div class="decision" id="decision" aria-live="polite"></div>
+          <p class="error" id="input-error" role="alert"></p>
+          <h2>検出</h2>
+          <div class="tablewrap">
+            <table id="findings">
+              <thead><tr><th>ルール</th><th>分類</th><th>深刻度</th><th>位置（バイト）</th><th>正規化後のみ</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <h2>検出箇所のハイライト</h2>
+          <pre class="highlight" id="highlight"></pre>
+          <h2>マスキング結果</h2>
+          <pre class="redacted" id="redacted"></pre>
+          <details>
+            <summary>Report（JSON）</summary>
+            <pre id="report-json"></pre>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-output" role="tabpanel" aria-labelledby="tab-output" hidden>
+      <div class="grid">
+        <div class="col">
+          <label for="output-text">モデルの出力（JSON）</label>
+          <div class="samples" aria-label="サンプル">
+            <button type="button" data-osample="valid">有効</button>
+            <button type="button" data-osample="disallowed">許可外のアクション</button>
+            <button type="button" data-osample="html">HTML 混入</button>
+            <button type="button" data-osample="notjson">JSON ではない</button>
+          </div>
+          <textarea id="output-text" rows="8" spellcheck="false"></textarea>
+          <label for="schema-text">JSON Schema</label>
+          <textarea id="schema-text" rows="12" spellcheck="false"></textarea>
+          <div class="row">
+            <label>許可リスト <input id="allow-pointer" value="/steps/*/action" aria-label="JSON ポインタ" /> = <input id="allow-values" value="read,summarize,notify" aria-label="許可する値（カンマ区切り）" /></label>
+          </div>
+          <div class="row">
+            <label><input type="checkbox" id="forbid-html" checked /> HTML を禁止</label>
+            <label>最大バイト数 <input id="max-bytes" type="number" value="65536" min="0" /></label>
+          </div>
+        </div>
+        <div class="col">
+          <div class="decision" id="output-decision" aria-live="polite"></div>
+          <p class="error" id="output-error" role="alert"></p>
+          <h2>違反</h2>
+          <div class="tablewrap">
+            <table id="violations">
+              <thead><tr><th>種類</th><th>パス</th><th>内容</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <details>
+            <summary>OutputReport（JSON）</summary>
+            <pre id="output-json"></pre>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>Rust + wasm-bindgen。ソースコードとルール定義は <a href="https://github.com/TakahiroNago/llm-inspect" rel="noopener">リポジトリ</a> を参照してください。MIT OR Apache-2.0。</p>
+  </footer>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

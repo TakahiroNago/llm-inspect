@@ -9,6 +9,10 @@
 # so full-width letters and zero-width characters do not bypass these rules.
 # If a pattern has a capture group, group 1 is the finding; this is how rules
 # express "not adjacent to a digit" without look-around.
+#
+# Word boundaries are written as `(?-u:\b)` (ASCII) on purpose: a Unicode `\b`
+# prevents the regex crate from using its DFA on any text that contains
+# non-ASCII characters (e.g. Japanese), which made scanning about 25x slower.
 
 [policy]
 block_at = "high"
@@ -60,35 +64,35 @@ id = "secret.aws_access_key"
 category = "secret"
 severity = "critical"
 description = "AWS access key id"
-pattern = '''\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'''
+pattern = '''(?-u:\b)(?:AKIA|ASIA)[0-9A-Z]{16}(?-u:\b)'''
 
 [[rules]]
 id = "secret.github_token"
 category = "secret"
 severity = "critical"
 description = "GitHub token (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_)"
-pattern = '''\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{80,})\b'''
+pattern = '''(?-u:\b)(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{80,})(?-u:\b)'''
 
 [[rules]]
 id = "secret.slack_token"
 category = "secret"
 severity = "critical"
 description = "Slack token"
-pattern = '''\bxox[abprs]-[A-Za-z0-9-]{10,}\b'''
+pattern = '''(?-u:\b)xox[abprs]-[A-Za-z0-9-]{10,}(?-u:\b)'''
 
 [[rules]]
 id = "secret.openai_key"
 category = "secret"
 severity = "high"
 description = "OpenAI-style API key (sk-...)"
-pattern = '''\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b'''
+pattern = '''(?-u:\b)sk-(?:proj-)?[A-Za-z0-9_-]{20,}(?-u:\b)'''
 
 [[rules]]
 id = "secret.google_api_key"
 category = "secret"
 severity = "high"
 description = "Google API key"
-pattern = '''\bAIza[0-9A-Za-z_-]{35}\b'''
+pattern = '''(?-u:\b)AIza[0-9A-Za-z_-]{35}(?-u:\b)'''
 
 [[rules]]
 id = "secret.private_key"
@@ -102,14 +106,14 @@ id = "secret.jwt"
 category = "secret"
 severity = "high"
 description = "JSON Web Token"
-pattern = '''\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b'''
+pattern = '''(?-u:\b)eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?-u:\b)'''
 
 [[rules]]
 id = "secret.generic_assignment"
 category = "secret"
 severity = "high"
 description = "Key/password/token assigned a literal value (api_key = \"...\")"
-pattern = '''(?i)\b(?:api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|password|passwd|pwd)\b\s*[:=]\s*["']?([A-Za-z0-9_\-/+=.]{12,})["']?'''
+pattern = '''(?i)(?-u:\b)(?:api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|password|passwd|pwd)(?-u:\b)\s*[:=]\s*["']?([A-Za-z0-9_\-/+=.]{12,})["']?'''
 
 # ---------------------------------------------------------------- Prompt injection
 # Heuristics. Attackers rephrase; these catch the common, direct forms and
@@ -121,7 +125,7 @@ id = "injection.ignore_instructions"
 category = "injection"
 severity = "high"
 description = "Request to ignore or override previous instructions (English)"
-pattern = '''(?i)\b(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}\b(?:previous|prior|above|earlier|all|any|your|the)\b[^.\n]{0,40}\b(?:instructions?|prompts?|rules?|guidelines?|constraints?|policy|policies)\b'''
+pattern = '''(?i)(?-u:\b)(?:ignore|disregard|forget|override|bypass)(?-u:\b)[^.\n]{0,40}(?-u:\b)(?:previous|prior|above|earlier|all|any|your|the)(?-u:\b)[^.\n]{0,40}(?-u:\b)(?:instructions?|prompts?|rules?|guidelines?|constraints?|policy|policies)(?-u:\b)'''
 
 [[rules]]
 id = "injection.ignore_instructions_ja"
@@ -135,7 +139,7 @@ id = "injection.reveal_system_prompt"
 category = "injection"
 severity = "high"
 description = "Request to reveal the system prompt or hidden instructions (English)"
-pattern = '''(?i)\b(?:reveal|show|print|display|repeat|output|leak|dump|tell me)\b[^.\n]{0,40}\b(?:system prompt|initial prompt|hidden (?:instructions?|prompt)|your (?:instructions|rules|configuration)|developer message)\b'''
+pattern = '''(?i)(?-u:\b)(?:reveal|show|print|display|repeat|output|leak|dump|tell me)(?-u:\b)[^.\n]{0,40}(?-u:\b)(?:system prompt|initial prompt|hidden (?:instructions?|prompt)|your (?:instructions|rules|configuration)|developer message)(?-u:\b)'''
 
 [[rules]]
 id = "injection.reveal_system_prompt_ja"
@@ -149,7 +153,7 @@ id = "injection.role_override"
 category = "injection"
 severity = "medium"
 description = "Attempt to switch the model into an unrestricted persona or mode (English)"
-pattern = '''(?i)\b(?:you are now|from now on you are|pretend (?:to be|you are)|act as)\b[^.\n]{0,60}\b(?:unrestricted|uncensored|unfiltered|jailbroken|no (?:rules|restrictions|limits)|without (?:any )?(?:rules|restrictions|limits))\b|\b(?:DAN|developer|god|jailbreak) mode\b'''
+pattern = '''(?i)(?-u:\b)(?:you are now|from now on you are|pretend (?:to be|you are)|act as)(?-u:\b)[^.\n]{0,60}(?-u:\b)(?:unrestricted|uncensored|unfiltered|jailbroken|no (?:rules|restrictions|limits)|without (?:any )?(?:rules|restrictions|limits))(?-u:\b)|(?-u:\b)(?:DAN|developer|god|jailbreak) mode(?-u:\b)'''
 
 [[rules]]
 id = "injection.role_override_ja"

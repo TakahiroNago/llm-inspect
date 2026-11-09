@@ -11,6 +11,8 @@ LLM アプリケーションの入力と出力を検査する Rust ライブラ�
 
 ルールは TOML で書いた正規表現なので、再コンパイルせずに監査・追加・差し替えができます。
 
+**ブラウザデモ：** https://takahironago.github.io/llm-inspect/ （WebAssembly。入力したテキストはブラウザの外へ送信されません）
+
 > **開発中（2026年11月〜）。** API は 0.x の間に変わる可能性があります。crates.io には未公開です。
 >
 > **検出は完全ではありません。** パターン照合はすべての攻撃や個人情報を捕捉できず、誤検知も起こります。人間の承認、最小権限、監査ログと組み合わせた多層防御の一層として使ってください。
@@ -130,6 +132,7 @@ redact_with = "[社員番号]"   # 省略時は [REDACTED:PII]
 
 - **正規化と位置の対応** — `Normalized` は 1 文字ずつ NFKC 正規化し、不可視文字（ゼロ幅スペース、双方向制御文字、BOM など）を取り除きながら、正規化後の各バイトが元のどの文字由来かを記録します。検出は正規化後のテキストで行い、結果は元のテキストのバイト範囲（必ず文字境界）に戻します。元のテキストでは一致せず正規化後にだけ一致した検出には `normalized_only = true` が付き、意図的な回避の強い兆候として扱えます。
 - **方針と判定** — 検出の最大深刻度を `block_at` / `warn_at` と比較して `Allow` / `Warn` / `Block` を決めます。深刻度と閾値はルールファイル側で調整できます。
+- **性能** — 既定ルールの単語境界は Unicode の `\b` ではなく ASCII の `(?-u:\b)` にしています。Unicode の `\b` を含むパターンは、日本語など非 ASCII 文字を含むテキストで regex クレートの DFA が使えず約 25 倍遅くなるためです。数値は [BENCHMARKS.md](BENCHMARKS.md) にあります（数 KB のプロンプトで 0.1 ms 程度）。
 - **出力検証** — JSON Schema は [`jsonschema`](https://docs.rs/jsonschema) クレートで検証します（ネットワーク経由の `$ref` 解決は無効）。許可リストのポインタは RFC 6901 に `*`（配列・オブジェクトの全要素）を加えた形式です。`contains_html` / `strip_html` は検出とタグ除去のための簡易実装で、HTML サニタイザーの代わりにはなりません。
 
 ## 開発
@@ -138,15 +141,28 @@ redact_with = "[社員番号]"   # 省略時は [REDACTED:PII]
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all --check
+cargo bench -p llm-inspect --bench inspect          # Criterion
+wasm-pack build crates/llm-inspect-wasm --target web --release --out-dir ../../demo/pkg --no-pack
+python -m http.server -d demo 8765                  # http://localhost:8765/ でデモを確認
 ```
 
-CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test / doc を、Ubuntu で MSRV（Rust 1.85）ビルドを実行します。
+CI（GitHub Actions）は Ubuntu と Windows で fmt / clippy / test / doc を、Ubuntu で wasm32 ビルドと MSRV（Rust 1.85）ビルドを実行します。`main` への push で `demo/` を GitHub Pages に配信します。
+
+## 構成
+
+```text
+crates/llm-inspect/        コアクレート（rules/default.toml を同梱、benches/ に Criterion）
+crates/llm-inspect-cli/    CLI（バイナリ名 llm-inspect）
+crates/llm-inspect-wasm/   wasm-bindgen バインディング（JSON 文字列で入出力）
+demo/                      ブラウザデモ（静的 HTML / JS。pkg/ はビルド生成物）
+```
 
 ## ロードマップ
 
 - [x] コアクレート（入力検査・レダクション・出力検証）、CLI、テスト、CI
-- [ ] WebAssembly ビルド（wasm-bindgen）とブラウザデモ
-- [ ] ベンチマーク（criterion）とプロパティテスト（proptest）
+- [x] WebAssembly ビルド（wasm-bindgen）とブラウザデモ（GitHub Pages）
+- [x] ベンチマーク（criterion）→ [BENCHMARKS.md](BENCHMARKS.md)
+- [ ] プロパティテスト（proptest）とファジング
 - [ ] 任意：axum による HTTP サービス
 - [ ] crates.io への公開
 

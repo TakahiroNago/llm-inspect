@@ -1,0 +1,29 @@
+[package]
+name = "llm-inspect-wasm"
+description = "WebAssembly bindings for llm-inspect (used by the browser demo)"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+llm-inspect.workspace = true
+wasm-bindgen.workspace = true
+console_error_panic_hook.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+missing_errors_doc = "allow"

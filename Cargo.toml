@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/llm-inspect", "crates/llm-inspect-cli"]
+members = ["crates/llm-inspect", "crates/llm-inspect-cli", "crates/llm-inspect-wasm"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,6 +21,9 @@ jsonschema = { version = "0.61", default-features = false }
 thiserror = "2.0"
 clap = { version = "4.6", features = ["derive"] }
 anyhow = "1.0"
+criterion = { version = "0.8", default-features = false }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
 
 [profile.release]
 lto = "thin"

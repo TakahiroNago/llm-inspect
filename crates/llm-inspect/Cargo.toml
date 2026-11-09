@@ -20,6 +20,13 @@ unicode-normalization.workspace = true
 jsonschema.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "inspect"
+harness = false
+
 [lints.rust]
 missing_docs = "warn"
 unsafe_code = "forbid"
