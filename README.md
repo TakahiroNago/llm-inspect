@@ -71,7 +71,7 @@ assert!(!report.is_valid()); // /steps/0/action は許可リスト外
 ## 使い方（CLI）
 
 ```sh
-cargo install --git https://github.com/TakahiroNago/llm-inspect llm-inspect-cli   # CLI は crates.io 未公開のため git から
+cargo install llm-inspect-cli   # バイナリ名は llm-inspect
 
 # 入力の検査（標準入力またはファイル）
 echo "連絡先は 090-1234-5678 です" | llm-inspect scan
@@ -200,7 +200,7 @@ fuzz/                      cargo-fuzz のターゲットとシードコーパス
 - [x] ベンチマーク（criterion）→ [BENCHMARKS.md](BENCHMARKS.md)
 - [x] プロパティテスト（proptest）とファジング（cargo-fuzz、週次 CI）
 - [x] axum による HTTP サービス（Docker イメージ、ベアラートークン、本文サイズ・タイムアウト制限）
-- [x] crates.io への公開（v0.1.0、2026-11-10。コアクレートのみ）
+- [x] crates.io への公開（v0.1.0、2026-11-10。[llm-inspect](https://crates.io/crates/llm-inspect) と [llm-inspect-cli](https://crates.io/crates/llm-inspect-cli)）
 
 ## ライセンス
 
