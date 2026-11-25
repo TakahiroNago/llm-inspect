@@ -49,4 +49,7 @@ pub use output::{
     contains_html, strip_html,
 };
 pub use report::{Decision, Finding, Redacted, Report};
-pub use rules::{Category, DEFAULT_RULES_TOML, Policy, Rule, RuleSet, Severity, Validator};
+pub use rules::{
+    Category, DEFAULT_RULES_TOML, PERSONAL_JA_RULES_TOML, Policy, Rule, RuleSet, Severity,
+    Validator,
+};

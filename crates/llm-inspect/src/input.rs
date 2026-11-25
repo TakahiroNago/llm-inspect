@@ -18,6 +18,7 @@ const REGEX_SIZE_LIMIT: usize = 10 * (1 << 20);
 struct Compiled {
     rule: Rule,
     re: Regex,
+    exclude: Option<Regex>,
 }
 
 /// Scans input text against a [`RuleSet`].
@@ -45,14 +46,18 @@ impl Inspector {
         rule_set.validate_ids()?;
         let mut rules = Vec::with_capacity(rule_set.rules.len());
         for rule in rule_set.rules {
-            let re = RegexBuilder::new(&rule.pattern)
-                .size_limit(REGEX_SIZE_LIMIT)
-                .build()
-                .map_err(|e| Error::InvalidPattern {
-                    id: rule.id.clone(),
-                    source: Box::new(e),
-                })?;
-            rules.push(Compiled { rule, re });
+            let compile = |pattern: &str| {
+                RegexBuilder::new(pattern)
+                    .size_limit(REGEX_SIZE_LIMIT)
+                    .build()
+                    .map_err(|e| Error::InvalidPattern {
+                        id: rule.id.clone(),
+                        source: Box::new(e),
+                    })
+            };
+            let re = compile(&rule.pattern)?;
+            let exclude = rule.exclude.as_deref().map(compile).transpose()?;
+            rules.push(Compiled { rule, re, exclude });
         }
         let set = RegexSetBuilder::new(rules.iter().map(|c| c.rule.pattern.as_str()))
             .size_limit(REGEX_SIZE_LIMIT * 4)
@@ -96,11 +101,10 @@ impl Inspector {
             let compiled = &self.rules[idx];
             // Spans the rule also produces on the raw text; used to tell
             // "matched only thanks to normalization" apart from plain matches.
-            let raw_spans: Option<HashSet<(usize, usize)>> = norm
-                .changed()
-                .then(|| spans(&compiled.re, compiled.rule.validator, text).collect());
+            let raw_spans: Option<HashSet<(usize, usize)>> =
+                norm.changed().then(|| spans(compiled, text).collect());
 
-            for (s, e) in spans(&compiled.re, compiled.rule.validator, norm.text()) {
+            for (s, e) in spans(compiled, norm.text()) {
                 let (start, end) = norm.to_original(s, e);
                 let normalized_only = raw_spans
                     .as_ref()
@@ -197,21 +201,53 @@ impl Inspector {
 }
 
 /// Byte spans of matches in `hay` (group 1 if the pattern has one), filtered by
-/// the rule's validator. Empty spans are skipped.
-fn spans<'h>(
-    re: &'h Regex,
-    validator: Option<crate::Validator>,
-    hay: &'h str,
-) -> impl Iterator<Item = (usize, usize)> + 'h {
-    re.captures_iter(hay).filter_map(move |caps| {
-        let m = caps.get(1).or_else(|| caps.get(0))?;
-        if m.is_empty() {
-            return None;
+/// the rule's validator and `exclude` pattern. Empty spans are skipped.
+///
+/// The search resumes right after the reported text, not after the whole
+/// match. A rule such as `(?:^|[^0-9])(NUMBER)(?:[^0-9]|$)` consumes the
+/// character after the number as context; resuming after the whole match would
+/// leave the next number without the context it needs before it, so of two
+/// numbers separated by a single character only the first would be found.
+fn spans<'h>(compiled: &'h Compiled, hay: &'h str) -> impl Iterator<Item = (usize, usize)> + 'h {
+    let mut pos = 0usize;
+    std::iter::from_fn(move || {
+        while pos <= hay.len() {
+            let caps = compiled.re.captures_at(hay, pos)?;
+            let whole = caps.get(0)?;
+            let m = caps.get(1).unwrap_or(whole);
+
+            pos = if !m.is_empty() {
+                m.end()
+            } else if whole.end() > pos {
+                whole.end()
+            } else {
+                // An empty match at `pos`: step over one character.
+                hay[pos..]
+                    .chars()
+                    .next()
+                    .map_or(hay.len() + 1, |c| pos + c.len_utf8())
+            };
+
+            if m.is_empty() {
+                continue;
+            }
+            if compiled
+                .rule
+                .validator
+                .is_some_and(|v| !v.accepts(m.as_str()))
+            {
+                continue;
+            }
+            if compiled
+                .exclude
+                .as_ref()
+                .is_some_and(|re| re.is_match(m.as_str()))
+            {
+                continue;
+            }
+            return Some((m.start(), m.end()));
         }
-        if validator.is_some_and(|v| !v.accepts(m.as_str())) {
-            return None;
-        }
-        Some((m.start(), m.end()))
+        None
     })
 }
 
@@ -255,6 +291,81 @@ mod tests {
         assert_eq!(r.findings.len(), 1);
         assert_eq!(r.findings[0].excerpt(text), "090-1234-5678");
         assert_eq!(r.decision, Decision::Block);
+    }
+
+    #[test]
+    fn matches_that_share_a_context_character_are_all_found() {
+        let i = inspector(
+            r#"
+            [[rules]]
+            id = "t"
+            category = "pii"
+            severity = "medium"
+            pattern = '''(?:^|[^0-9])(0[0-9]{2}-[0-9]{4}-[0-9]{4})(?:[^0-9]|$)'''
+            "#,
+        );
+        let text = "090-1111-2222,080-3333-4444 070-5555-6666";
+        let r = i.scan(text);
+        let found: Vec<&str> = r.findings.iter().map(|f| f.excerpt(text)).collect();
+        assert_eq!(found, ["090-1111-2222", "080-3333-4444", "070-5555-6666"]);
+        assert_eq!(
+            i.redact(text).text,
+            "[REDACTED:PII],[REDACTED:PII] [REDACTED:PII]"
+        );
+    }
+
+    #[test]
+    fn a_pattern_that_can_match_nothing_does_not_loop() {
+        let i = inspector(
+            r#"
+            [[rules]]
+            id = "t"
+            category = "pii"
+            severity = "low"
+            pattern = '''x*'''
+            "#,
+        );
+        let text = "aあxxb";
+        let r = i.scan(text);
+        let found: Vec<&str> = r.findings.iter().map(|f| f.excerpt(text)).collect();
+        assert_eq!(found, ["xx"]);
+    }
+
+    #[test]
+    fn exclude_drops_matches_by_their_reported_text() {
+        let i = inspector(
+            r#"
+            [[rules]]
+            id = "t"
+            category = "pii"
+            severity = "medium"
+            pattern = '''(?:^|[^a-z])([a-z]+)@'''
+            exclude = '''^(?:info|support)$'''
+            "#,
+        );
+        let text = "info@ taro@ support@ infodesk@";
+        let r = i.scan(text);
+        let found: Vec<&str> = r.findings.iter().map(|f| f.excerpt(text)).collect();
+        assert_eq!(found, ["taro", "infodesk"]);
+    }
+
+    #[test]
+    fn invalid_exclude_names_the_rule() {
+        let err = Inspector::new(
+            RuleSet::from_toml(
+                r#"
+                [[rules]]
+                id = "broken-exclude"
+                category = "pii"
+                severity = "low"
+                pattern = "x"
+                exclude = "("
+                "#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::InvalidPattern { id, .. } if id == "broken-exclude"));
     }
 
     #[test]

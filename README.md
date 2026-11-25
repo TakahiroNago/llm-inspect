@@ -15,6 +15,7 @@ LLM アプリケーションの入力と出力を検査する Rust ライブラ�
 **ブラウザデモ：** https://takahironago.github.io/llm-inspect/ （WebAssembly。入力したテキストはブラウザの外へ送信されません）
 
 > **v0.1.0 を crates.io に公開しています（2026年11月）。** API は 0.x の間に変わる可能性があります。
+> このリポジトリの `main` は 0.2.0（未公開）で、追加パック（`personal-ja`）と `exclude` はこの版からです。
 >
 > **検出は完全ではありません。** パターン照合はすべての攻撃や個人情報を捕捉できず、誤検知も起こります。人間の承認、最小権限、監査ログと組み合わせた多層防御の一層として使ってください。
 
@@ -123,7 +124,7 @@ curl -s -H 'Content-Type: application/json' \
 - 本文サイズ上限（既定 1 MiB → 413）、リクエストタイムアウト（既定 10 秒 → 408）、JSON 以外は 415、不正な JSON やポリシーは 400 で、いずれも `{"error":"…"}` を返します。
 - アクセスログはメソッド・パス・ステータス・所要時間のみで、**リクエスト本文は記録しません**（本文こそが秘密情報や個人情報だからです）。
 - 出力ポリシーは起動時に `--policy NAME=PATH` で読み込んで `policy_name` で参照するか、リクエストに `policy` としてインラインで渡せます（インラインは毎回スキーマをコンパイルします）。
-- ルールは CLI と同じく `--rules FILE`（追加）と `--no-defaults` で差し替えられます。
+- ルールは CLI と同じく `--rules FILE`（追加）と `--no-defaults` で差し替えられます。追加パックは `--pack personal-ja`（環境変数では `LLM_INSPECT_PACKS=personal-ja`）で有効にします。
 
 ## ルールの書き方
 
@@ -144,6 +145,7 @@ redact_with = "[社員番号]"   # 省略時は [REDACTED:PII]
 
 - 正規表現は [regex クレート](https://docs.rs/regex) の構文です（後読み・先読みは使えません）。パターンにキャプチャグループがあればグループ 1 を検出箇所として扱うので、「直前が数字でない」といった文脈条件をグループの外に書けます。
 - `validator = "luhn"` を付けると、一致した数字列が Luhn チェックを通る場合だけ検出します（クレジットカード番号用）。
+- `exclude = '''…'''` に正規表現を書くと、検出箇所（グループ 1 があればグループ 1）がそれに一致する場合は検出しません。否定の先読み・後読みの代わりです（例：「さん」の前の漢字 2〜4 文字を氏名とするが、「上司」「同僚」は除く）。
 - CLI の `--rules` は既定ルールに追加し、`[policy]` は上書きします。`--no-defaults` で既定ルールを外せます。
 - 既定ルールは [`crates/llm-inspect/rules/default.toml`](crates/llm-inspect/rules/default.toml) にあります。
 
@@ -160,8 +162,37 @@ redact_with = "[社員番号]"   # 省略時は [REDACTED:PII]
 | injection | クエリ付き URL への Markdown 画像・リンク（データ持ち出し経路） | high |
 | injection | 不可視文字の混入（`obfuscation.invisible_chars`。正規化時に自動付与） | low |
 
+### 追加パック：`personal-ja`
+
+日本語の文章に現れる個人情報のルールです。既定ルールには含めず、指定したときだけ既定ルールに追加します（方針 `[policy]` は変えません）。
+
+```sh
+echo "田中さんに株式会社サンプル商事の件で 09012345678 へ電話した" | llm-inspect scan --pack personal-ja --redact
+# [氏名]に[会社名]の件で [電話番号] へ電話した
+```
+
+```rust
+use llm_inspect::{Inspector, RuleSet};
+
+let mut rules = RuleSet::default_rules();
+rules.add_rules(RuleSet::pack("personal-ja").expect("bundled pack"));
+let inspector = Inspector::new(rules)?;
+```
+
+| ルール | 内容 | 深刻度 |
+|---|---|---|
+| `pii.ja.person_name` | 敬称・役職の付いた氏名（田中さん、山田社長）。「上司さん」「担当者様」などは除く | medium |
+| `pii.ja.company` | 法人格の付いた会社名（株式会社○○、○○株式会社） | medium |
+| `pii.ja.address` | 丁目・番地まで書かれた住所 | medium |
+| `pii.ja.postal_code` | 郵便番号（〒150-0001、150-0001） | medium |
+| `pii.ja.phone` | 区切りの有無を問わない電話番号（10 桁、070／080／090 は 11 桁） | medium |
+| `pii.ja.url`、`pii.ja.sns_handle` | URL、`@` で始まるアカウント名 | low |
+
+相談・日記・問い合わせのように、利用者が自分の身の回りのことを書く用途を想定しています。取りこぼしを減らす側に寄せているので、業務文書では誤検知が増えます。敬称や役職の付かない氏名は検出できません。ルールは [`crates/llm-inspect/rules/personal-ja.toml`](crates/llm-inspect/rules/personal-ja.toml) にあります。
+
 ## 設計メモ
 
+- **検出の再開位置** — 「直前が数字でない」のような文脈条件をグループの外に書いたルールでは、文脈として読んだ 1 文字が次の一致の文脈にもなります。そのため、次の検索は一致全体の終わりではなく、検出箇所（グループ 1）の終わりから再開します。`090-…,080-…` のように 1 文字だけを挟んで並ぶ 2 件を、両方とも検出・マスキングするためです。
 - **正規化と位置の対応** — `Normalized` は 1 文字ずつ NFKC 正規化し、不可視文字（ゼロ幅スペース、双方向制御文字、BOM など）を取り除きながら、正規化後の各バイトが元のどの文字由来かを記録します。検出は正規化後のテキストで行い、結果は元のテキストのバイト範囲（必ず文字境界）に戻します。元のテキストでは一致せず正規化後にだけ一致した検出には `normalized_only = true` が付き、意図的な回避の強い兆候として扱えます。
 - **方針と判定** — 検出の最大深刻度を `block_at` / `warn_at` と比較して `Allow` / `Warn` / `Block` を決めます。深刻度と閾値はルールファイル側で調整できます。
 - **性能** — 既定ルールの単語境界は Unicode の `\b` ではなく ASCII の `(?-u:\b)` にしています。Unicode の `\b` を含むパターンは、日本語など非 ASCII 文字を含むテキストで regex クレートの DFA が使えず約 25 倍遅くなるためです。数値は [BENCHMARKS.md](BENCHMARKS.md) にあります（数 KB のプロンプトで 0.1 ms 程度）。
@@ -200,6 +231,7 @@ fuzz/                      cargo-fuzz のターゲットとシードコーパス
 - [x] ベンチマーク（criterion）→ [BENCHMARKS.md](BENCHMARKS.md)
 - [x] プロパティテスト（proptest）とファジング（cargo-fuzz、週次 CI）
 - [x] axum による HTTP サービス（Docker イメージ、ベアラートークン、本文サイズ・タイムアウト制限）
+- [x] 追加パック `personal-ja`、ルールの `exclude`、1 文字を挟んで並ぶ検出の取りこぼしの修正（0.2.0、crates.io には未公開）
 - [x] crates.io への公開（v0.1.0、2026-11-10。[llm-inspect](https://crates.io/crates/llm-inspect) と [llm-inspect-cli](https://crates.io/crates/llm-inspect-cli)）
 
 ## ライセンス

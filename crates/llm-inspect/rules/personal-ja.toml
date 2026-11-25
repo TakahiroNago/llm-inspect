@@ -1,0 +1,81 @@
+# personal-ja: personal data as it appears in Japanese free text.
+#
+# An optional pack, added on top of the defaults (`--pack personal-ja`, or
+# `RuleSet::pack("personal-ja")`). It is meant for applications where people
+# write about their own lives -- consultations, diaries, support messages --
+# and want to be warned before a name, an employer or an address leaves their
+# hands. It favors recall over precision and is noisy on business documents,
+# which is why it is not part of the defaults.
+#
+# The file has no [policy] table: adding the pack never changes the thresholds.
+#
+# The usual warning applies. These are heuristics: a name written without an
+# honorific or a title is not found, and an ordinary word in front of さん may
+# be. Pattern matching cannot detect every piece of personal data.
+#
+# Notation used in the patterns below:
+#   kanji          \x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々
+#   dash-like      \-ー−―‐‑–—   (people type many things for a hyphen; NFKC
+#                               normalization only folds the full-width one)
+
+# A mobile number is 11 digits (070/080/090), anything else 10, with or without
+# separators. The default `pii.phone_jp` only knows the hyphenated form.
+[[rules]]
+id = "pii.ja.phone"
+category = "pii"
+severity = "medium"
+description = "Japanese phone number, with or without separators (10 digits, or 11 for 070/080/090)"
+pattern = '''(?:^|[^0-9])(0[789]0(?:[ \-ー−―‐‑–—]?[0-9]){8}|0[0-9](?:[ \-ー−―‐‑–—]?[0-9]){8})(?:[^0-9]|$)'''
+redact_with = "[電話番号]"
+
+[[rules]]
+id = "pii.ja.postal_code"
+category = "pii"
+severity = "medium"
+description = "Japanese postal code (〒1500001, 150-0001)"
+pattern = '''(?:^|[^0-9\-ー−―‐‑–—])(〒\s*[0-9]{3}[\-ー−―‐‑–—]?[0-9]{4}|[0-9]{3}[\-ー−―‐‑–—][0-9]{4})(?:[^0-9\-ー−―‐‑–—]|$)'''
+redact_with = "[郵便番号]"
+
+[[rules]]
+id = "pii.ja.address"
+category = "pii"
+severity = "medium"
+description = "Japanese street address down to a block or lot number"
+pattern = '''(?:(?:北海道|東京都|(?:京都|大阪)府|[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々]{2,3}県)[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々ぁ-んァ-ヶー]{1,12}[市区町村郡]|[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々]{1,5}[市区町村])[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々ぁ-んァ-ヶー]{0,12}[0-9]+(?:丁目|番地?|[\-ー−―‐‑–—][0-9]+)[0-9\-ー−―‐‑–—丁目番地号]*'''
+redact_with = "[住所]"
+
+[[rules]]
+id = "pii.ja.company"
+category = "pii"
+severity = "medium"
+description = "Company name with its legal form (株式会社, 有限会社, 合同会社) before or after"
+pattern = '''(?:株式会社|有限会社|合同会社)\s*[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々\x{30A1}-\x{30FA}A-Za-z0-9ー]{1,20}|[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々\x{30A1}-\x{30FA}A-Za-z0-9ー]{1,20}\s*(?:株式会社|有限会社|合同会社|\(株\)|㈱)'''
+redact_with = "[会社名]"
+
+# Two to four kanji followed by an honorific or a job title. `exclude` drops
+# the words that sit in the same position without being names: 上司さん, and
+# anything ending in 者 / 員 / 長 / 官 / 手 / 師 (担当者様, 部長さん).
+[[rules]]
+id = "pii.ja.person_name"
+category = "pii"
+severity = "medium"
+description = "Personal name followed by an honorific or a job title (田中さん, 山田社長)"
+pattern = '''(?:^|[^\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々])([\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々]{2,4}(?:代表取締役|執行役員|副社長|本部長|支店長|工場長|理事長|取締役|さん|様|氏|君|くん|ちゃん|社長|会長|専務|常務|部長|課長|係長|主任|所長|店長))'''
+exclude = '''^(?:上司|同僚|先輩|後輩|友人|友達|彼女|彼氏|旦那|両親|家族|先生|医師|社員|相手|本人|店員|担当|[\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}々]*[者員長官手師])(?:代表取締役|執行役員|副社長|本部長|支店長|工場長|理事長|取締役|さん|様|氏|君|くん|ちゃん|社長|会長|専務|常務|部長|課長|係長|主任|所長|店長)$'''
+redact_with = "[氏名]"
+
+[[rules]]
+id = "pii.ja.url"
+category = "pii"
+severity = "low"
+description = "URL (a personal page or profile identifies its owner)"
+pattern = '''(?i)(?:https?://|www\.)\S+'''
+redact_with = "[URL]"
+
+[[rules]]
+id = "pii.ja.sns_handle"
+category = "pii"
+severity = "low"
+description = "Account handle (@name)"
+pattern = '''(?i)(?:^|[^a-z0-9])(@[a-z0-9_]{3,})'''
+redact_with = "[アカウント]"

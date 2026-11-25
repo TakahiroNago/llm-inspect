@@ -791,7 +791,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "llm-inspect"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "jsonschema",
@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "llm-inspect-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "llm-inspect-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "llm-inspect-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "console_error_panic_hook",
  "llm-inspect",
