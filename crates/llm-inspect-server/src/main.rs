@@ -24,6 +24,15 @@ struct Cli {
     /// Use only the rules given with --rules.
     #[arg(long, requires = "rules")]
     no_defaults: bool,
+    /// Bundled optional rule pack to add (e.g. personal-ja). Repeatable; in the env var,
+    /// separate names with commas. Its rules are appended; the policy is not changed.
+    #[arg(
+        long = "pack",
+        value_name = "NAME",
+        env = "LLM_INSPECT_PACKS",
+        value_delimiter = ','
+    )]
+    packs: Vec<String>,
     /// Named output policy as NAME=PATH (JSON file with an `OutputPolicy`). Repeatable.
     #[arg(long = "policy", value_name = "NAME=PATH")]
     policies: Vec<String>,
@@ -54,6 +63,15 @@ async fn main() -> Result<()> {
     } else {
         RuleSet::default_rules()
     };
+    for name in &cli.packs {
+        let Some(pack) = RuleSet::pack(name) else {
+            bail!(
+                "unknown rule pack `{name}` (available: {})",
+                RuleSet::PACKS.join(", ")
+            );
+        };
+        set.add_rules(pack);
+    }
     for path in &cli.rules {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("reading rules {}", path.display()))?;

@@ -27,6 +27,15 @@ use crate::Error;
 /// The bundled default rule set, as TOML.
 pub const DEFAULT_RULES_TOML: &str = include_str!("../rules/default.toml");
 
+/// The bundled `personal-ja` pack, as TOML: personal data as it appears in
+/// Japanese free text (names with honorifics or titles, company names, street
+/// addresses, postal codes, phone numbers without hyphens, URLs and handles).
+///
+/// It is not part of the defaults because it trades precision for recall: it
+/// suits applications where people write about their own lives, and is noisy
+/// on business documents.
+pub const PERSONAL_JA_RULES_TOML: &str = include_str!("../rules/personal-ja.toml");
+
 /// What kind of problem a rule detects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -123,6 +132,12 @@ pub struct Rule {
     /// Optional extra validation of the matched text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validator: Option<Validator>,
+    /// Optional regular expression. A match whose reported text (group 1 if the
+    /// pattern has one) matches it is dropped. This stands in for the negative
+    /// look-around the regex crate does not have, e.g. "two to four kanji before
+    /// さん, but not 上司 or 同僚".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclude: Option<String>,
     /// Replacement used by [`Inspector::redact`](crate::Inspector::redact).
     /// Defaults to `[REDACTED:<CATEGORY>]`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -170,6 +185,28 @@ impl RuleSet {
     /// Never in practice: the bundled TOML is validated by the crate's tests.
     pub fn default_rules() -> Self {
         Self::from_toml(DEFAULT_RULES_TOML).expect("bundled rules must parse")
+    }
+
+    /// Names accepted by [`RuleSet::pack`].
+    pub const PACKS: &'static [&'static str] = &["personal-ja"];
+
+    /// A bundled optional rule pack by name, or `None` if there is no such pack.
+    /// Add it to a rule set with [`RuleSet::add_rules`].
+    ///
+    /// # Panics
+    ///
+    /// Never in practice: the bundled TOML is validated by the crate's tests.
+    pub fn pack(name: &str) -> Option<Self> {
+        let toml_text = match name {
+            "personal-ja" => PERSONAL_JA_RULES_TOML,
+            _ => return None,
+        };
+        Some(Self::from_toml(toml_text).expect("bundled rules must parse"))
+    }
+
+    /// Appends the rules of `other` and keeps this set's policy.
+    pub fn add_rules(&mut self, other: RuleSet) {
+        self.rules.extend(other.rules);
     }
 
     /// Parses a rule set from TOML. Patterns are compiled later by
@@ -222,6 +259,20 @@ mod tests {
         let rs = RuleSet::default_rules();
         assert!(rs.rules.len() >= 10);
         rs.validate_ids().unwrap();
+    }
+
+    #[test]
+    fn every_pack_parses_and_can_be_added_to_the_defaults() {
+        for name in RuleSet::PACKS {
+            let pack = RuleSet::pack(name).unwrap();
+            assert!(!pack.rules.is_empty(), "{name} is empty");
+            let mut rs = RuleSet::default_rules();
+            let policy = rs.policy.clone();
+            rs.add_rules(pack);
+            rs.validate_ids().unwrap();
+            assert_eq!(rs.policy, policy);
+        }
+        assert!(RuleSet::pack("no-such-pack").is_none());
     }
 
     #[test]

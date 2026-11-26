@@ -38,6 +38,10 @@ struct RuleSource {
     /// Use only the rules in --rules, not the bundled defaults.
     #[arg(long, requires = "rules")]
     no_defaults: bool,
+    /// Bundled optional rule pack to add (e.g. personal-ja). Repeatable.
+    /// Its rules are appended; the policy is not changed.
+    #[arg(long = "pack", value_name = "NAME")]
+    packs: Vec<String>,
 }
 
 #[derive(Args)]
@@ -263,6 +267,15 @@ impl RuleSource {
         } else {
             RuleSet::default_rules()
         };
+        for name in &self.packs {
+            let Some(pack) = RuleSet::pack(name) else {
+                anyhow::bail!(
+                    "unknown rule pack `{name}` (available: {})",
+                    RuleSet::PACKS.join(", ")
+                );
+            };
+            set.add_rules(pack);
+        }
         if let Some(p) = &self.rules {
             let text = std::fs::read_to_string(p)
                 .with_context(|| format!("reading rules {}", p.display()))?;
